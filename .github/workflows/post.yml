@@ -1,0 +1,58 @@
+name: Post Short
+
+# Times are UTC (GitHub cron has no timezone). These map to Eastern:
+#   13:00 UTC = 9am ET,  17:00 = 1pm ET,  21:00 = 5pm ET,  01:00 = 9pm ET
+# (In winter/EST these land one hour earlier ET — GitHub cron doesn't do DST.)
+on:
+  schedule:
+    - cron: "0 13 * * *"
+    - cron: "0 17 * * *"
+    - cron: "0 21 * * *"
+    - cron: "0 1 * * *"
+  workflow_dispatch: {}   # lets us trigger a run manually to test
+
+permissions:
+  contents: write         # needed to commit the updated topic history back
+
+concurrency:
+  group: post-short
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ffmpeg and a bold font
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Recreate YouTube credential files from secrets
+        run: |
+          echo '${{ secrets.CLIENT_SECRET_JSON_B64 }}' | base64 -d > client_secret.json
+          echo '${{ secrets.TOKEN_JSON_B64 }}' | base64 -d > token.json
+
+      - name: Generate and upload a video
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
+          AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
+          AZURE_VOICE_NAME: en-US-OnyxTurboMultilingualNeural
+          MUSIC_VOLUME: "0.08"
+        run: python pipeline.py
+
+      - name: Save updated topic history back to the repo
+        run: |
+          git config user.name "shorts-factory-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state/used_topics.json || true
+          git commit -m "Update topic history [skip ci]" || echo "no changes to commit"
+          git push || echo "nothing to push"

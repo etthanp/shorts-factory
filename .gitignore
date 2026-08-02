@@ -1,0 +1,13 @@
+# Secrets — these live in GitHub Actions secrets, never in the repo
+.env
+token.json
+client_secret.json
+
+# Generated output — videos are ephemeral, don't commit them
+output/
+logs/
+
+# Python / macOS cruft
+__pycache__/
+*.pyc
+.DS_Store
