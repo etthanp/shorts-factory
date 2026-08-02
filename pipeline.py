@@ -37,6 +37,8 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY")
 AZURE_SPEECH_KEY = os.environ.get("AZURE_SPEECH_KEY")
 AZURE_SPEECH_REGION = os.environ.get("AZURE_SPEECH_REGION")
 AZURE_VOICE_NAME = os.environ.get("AZURE_VOICE_NAME", "en-US-OnyxTurboMultilingualNeural")
+# Speaking rate relative to the voice's default. "+0%" = normal, "+15%" = 15% faster.
+SPEECH_RATE = os.environ.get("SPEECH_RATE", "+15%")
 MODEL = "claude-sonnet-5"
 
 USED_TOPICS_PATH = ROOT / "state" / "used_topics.json"
@@ -162,8 +164,9 @@ def synthesize_segment(text, idx, workdir):
 
     ssml = (
         "<speak version='1.0' xml:lang='en-US'>"
-        f"<voice xml:lang='en-US' name='{AZURE_VOICE_NAME}'>{xml_escape(text)}</voice>"
-        "</speak>"
+        f"<voice xml:lang='en-US' name='{AZURE_VOICE_NAME}'>"
+        f"<prosody rate='{SPEECH_RATE}'>{xml_escape(text)}</prosody>"
+        "</voice></speak>"
     )
     resp = requests.post(
         f"https://{AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1",

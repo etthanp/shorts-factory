@@ -46,6 +46,7 @@ jobs:
           AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
           AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
           AZURE_VOICE_NAME: en-US-OnyxTurboMultilingualNeural
+          SPEECH_RATE: "+15%"      # how fast the voice talks: +0% normal, higher = faster
           MUSIC_VOLUME: "0.08"
         run: python pipeline.py
 
