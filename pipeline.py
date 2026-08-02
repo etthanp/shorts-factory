@@ -116,8 +116,11 @@ def generate_script(topic_override=None):
 {topic_instruction}
 
 Requirements:
-- Narration: 120-150 words total, punchy short sentences, strong hook in the first line,
-  written to be read aloud by text-to-speech (no emoji, no markdown).
+- Narration: 120-150 words total, punchy short sentences, written to be read aloud by
+  text-to-speech (no emoji, no markdown).
+- The FIRST segment's text MUST open with a "Did you know" hook — e.g. "Did you know that..."
+  or "Did you know..." — phrased as the surprising fact of this video. Keep it natural and
+  varied in wording after those opening words; do not use the exact same sentence every time.
 - Break the narration into 5-8 segments. Each segment is 1-2 sentences that would take
   roughly 4-8 seconds to say aloud.
 - For each segment, give a short (2-4 word) visual search keyword describing stock footage
