@@ -168,18 +168,29 @@ def synthesize_segment(text, idx, workdir):
         f"<prosody rate='{SPEECH_RATE}'>{xml_escape(text)}</prosody>"
         "</voice></speak>"
     )
-    resp = requests.post(
-        f"https://{AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1",
-        headers={
-            "Ocp-Apim-Subscription-Key": AZURE_SPEECH_KEY,
-            "Content-Type": "application/ssml+xml",
-            "X-Microsoft-OutputFormat": "audio-24khz-96kbitrate-mono-mp3",
-            "User-Agent": "shorts-factory",
-        },
-        data=ssml.encode("utf-8"),
-        timeout=30,
-    )
-    resp.raise_for_status()
+    url = f"https://{AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1"
+    headers = {
+        "Ocp-Apim-Subscription-Key": AZURE_SPEECH_KEY,
+        "Content-Type": "application/ssml+xml",
+        "X-Microsoft-OutputFormat": "audio-24khz-96kbitrate-mono-mp3",
+        "User-Agent": "shorts-factory",
+    }
+    # Azure's free (F0) tier has a low burst rate limit; firing all segments
+    # back-to-back can trip a 429. Retry with backoff (honoring Retry-After)
+    # so a transient rate-limit or 5xx doesn't kill the whole run.
+    max_attempts = 6
+    for attempt in range(1, max_attempts + 1):
+        resp = requests.post(url, headers=headers, data=ssml.encode("utf-8"), timeout=30)
+        if resp.status_code == 429 or resp.status_code >= 500:
+            if attempt == max_attempts:
+                resp.raise_for_status()
+            wait = float(resp.headers.get("Retry-After", 0)) or min(2 ** attempt, 30)
+            print(f"   Azure {resp.status_code}, retrying in {wait:.0f}s "
+                  f"(attempt {attempt}/{max_attempts})...")
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        break
     mp3_path.write_bytes(resp.content)
 
     subprocess.run(
