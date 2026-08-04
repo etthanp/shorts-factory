@@ -45,6 +45,23 @@ USED_TOPICS_PATH = ROOT / "state" / "used_topics.json"
 OUTPUT_DIR = ROOT / "output"
 MUSIC_DIR = ROOT / "music"
 MUSIC_VOLUME = float(os.environ.get("MUSIC_VOLUME", "0.15"))
+
+
+def _hex_to_rgb(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+# Branding
+BRAND_HANDLE = os.environ.get("BRAND_HANDLE", "@TheFoundationTheory")
+BRAND_SPOKEN = os.environ.get("BRAND_SPOKEN", "The Foundation Theory")
+BRAND_TAGLINE = os.environ.get("BRAND_TAGLINE", "Your daily dose of weird things you didn't know")
+ACCENT_COLOR = os.environ.get("ACCENT_COLOR", "#3BA7FF")
+ACCENT_RGB = _hex_to_rgb(ACCENT_COLOR)
+CAPTION_COLOR = os.environ.get("CAPTION_COLOR", "#FFDD00")  # caption text fill (yellow)
+CAPTION_RGB = _hex_to_rgb(CAPTION_COLOR)
+# Caption pacing: how many words show on screen at once (smaller = faster-moving).
+CAPTION_WORDS_PER_CHUNK = int(os.environ.get("CAPTION_WORDS_PER_CHUNK", "4"))
 def _resolve_font():
     # Works on both this Mac and the Linux CI runner (where the workflow
     # installs DejaVu). First existing path wins; FONT_PATH env var overrides.
@@ -123,6 +140,9 @@ Requirements:
 - The FIRST segment's text MUST open with a "Did you know" hook — e.g. "Did you know that..."
   or "Did you know..." — phrased as the surprising fact of this video. Keep it natural and
   varied in wording after those opening words; do not use the exact same sentence every time.
+- The LAST segment MUST end with a short, punchy engagement question that invites viewers to
+  reply in the comments (e.g. "Would you have risked it? Tell me below."). Do NOT include any
+  "follow", "subscribe", "like", or channel call-to-action anywhere — that is added separately.
 - Break the narration into 5-8 segments. Each segment is 1-2 sentences that would take
   roughly 4-8 seconds to say aloud.
 - For each segment, give a short (2-4 word) visual search keyword describing stock footage
@@ -282,32 +302,22 @@ def render_caption_image(text, idx, workdir):
     # filter isn't available. Render captions as transparent PNGs with Pillow
     # instead and composite them with ffmpeg's overlay filter (no text engine
     # needed there).
-    font = ImageFont.truetype(FONT_PATH, 60)
-    lines = textwrap.wrap(text, width=24)
+    font = ImageFont.truetype(FONT_PATH, 66)
+    lines = textwrap.wrap(text, width=18)
 
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    line_heights = [draw.textbbox((0, 0), line, font=font)[3] for line in lines]
-    line_height = max(line_heights) + 14
-    block_height = line_height * len(lines)
-    block_top = int(H * 0.75)
-
-    pad_x, pad_y = 28, 20
-    max_line_width = max(draw.textbbox((0, 0), line, font=font)[2] for line in lines)
-    box = [
-        (W - max_line_width) / 2 - pad_x,
-        block_top - pad_y,
-        (W + max_line_width) / 2 + pad_x,
-        block_top + block_height + pad_y,
-    ]
-    draw.rounded_rectangle(box, radius=16, fill=(0, 0, 0, 140))
-
-    y = block_top
+    stroke = 6
+    line_height = max(draw.textbbox((0, 0), line, font=font, stroke_width=stroke)[3]
+                      for line in lines) + 16
+    y = int(H * 0.72)
     for line in lines:
-        line_width = draw.textbbox((0, 0), line, font=font)[2]
+        line_width = draw.textbbox((0, 0), line, font=font, stroke_width=stroke)[2]
         x = (W - line_width) / 2
-        draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
+        # Solid yellow fill with a thick black outline for legibility over footage.
+        draw.text((x, y), line, font=font, fill=(*CAPTION_RGB, 255),
+                  stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
         y += line_height
 
     path = workdir / f"cap_{idx:02d}.png"
@@ -315,27 +325,95 @@ def render_caption_image(text, idx, workdir):
     return path
 
 
-def build_final_video(video_path, audio_path, segments, workdir, final_path):
-    cap_paths = [render_caption_image(seg["text"], i, workdir) for i, seg in enumerate(segments)]
+def render_watermark_image(workdir):
+    # A persistent channel handle shown near the top of every frame.
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    font = ImageFont.truetype(FONT_PATH, 42)
+    tw = draw.textbbox((0, 0), BRAND_HANDLE, font=font)[2]
+    draw.text(((W - tw) / 2, int(H * 0.06)), BRAND_HANDLE, font=font,
+              fill=(255, 255, 255, 205), stroke_width=2, stroke_fill=(0, 0, 0, 190))
+    path = workdir / "watermark.png"
+    img.save(path)
+    return path
 
+
+def render_cta_overlay(workdir):
+    # Branded follow call-to-action, overlaid ON the footage (not a separate
+    # screen) during the closing narration.
+    img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle([70, int(H * 0.30), W - 70, int(H * 0.60)],
+                           radius=32, fill=(0, 0, 0, 150))
+
+    def center(text, size, y, fill, stroke=3):
+        font = ImageFont.truetype(FONT_PATH, size)
+        w = draw.textbbox((0, 0), text, font=font, stroke_width=stroke)[2]
+        draw.text(((W - w) / 2, y), text, font=font, fill=fill,
+                  stroke_width=stroke, stroke_fill=(0, 0, 0, 255))
+
+    center("FOLLOW", 118, int(H * 0.33), (255, 255, 255, 255), stroke=5)
+    center(BRAND_HANDLE, 70, int(H * 0.455), (*ACCENT_RGB, 255), stroke=4)
+    y = int(H * 0.545)
+    for line in textwrap.wrap(BRAND_TAGLINE, width=26):
+        center(line, 42, y, (235, 235, 235, 255), stroke=3)
+        y += 54
+    path = workdir / "cta_overlay.png"
+    img.save(path)
+    return path
+
+
+def _chunk_text(text, max_words):
+    words = text.split()
+    chunks = [" ".join(words[i:i + max_words]) for i in range(0, len(words), max_words)]
+    return chunks or [text]
+
+
+def build_final_video(video_path, audio_path, segments, workdir, final_path):
     cmd = ["ffmpeg", "-y", "-loglevel", "error",
            "-i", str(video_path.resolve()), "-i", str(audio_path.resolve())]
-    for cap_path in cap_paths:
-        cmd += ["-loop", "1", "-i", str(cap_path.resolve())]
+
+    # Build overlay images with their time windows. Normal segments become
+    # short, fast caption chunks; the outro segment gets a single follow CTA
+    # overlaid on its footage (integrated, not a separate screen).
+    overlays = []  # (image_path, start, end)
+    cap_idx = 0
+    for seg in segments:
+        if seg.get("is_outro"):
+            overlays.append((render_cta_overlay(workdir), seg["start"], seg["end"]))
+            continue
+        chunks = _chunk_text(seg["text"], CAPTION_WORDS_PER_CHUNK)
+        span = (seg["end"] - seg["start"]) / len(chunks)
+        for j, chunk in enumerate(chunks):
+            overlays.append((render_caption_image(chunk, cap_idx, workdir),
+                             seg["start"] + j * span, seg["start"] + (j + 1) * span))
+            cap_idx += 1
+
+    cap_inputs = []  # (ffmpeg_input_index, start, end)
+    next_index = 2
+    for image_path, start, end in overlays:
+        cmd += ["-loop", "1", "-i", str(image_path.resolve())]
+        cap_inputs.append((next_index, start, end))
+        next_index += 1
+
+    # Persistent watermark, overlaid on top for the whole video.
+    watermark_path = render_watermark_image(workdir)
+    cmd += ["-loop", "1", "-i", str(watermark_path.resolve())]
+    watermark_index = next_index
 
     filters = []
     stream = "[0:v]"
-    for i, seg in enumerate(segments):
-        input_index = i + 2  # 0=video, 1=audio, 2..=caption images
-        out_label = f"[v{i}]"
+    for input_index, start, end in cap_inputs:
+        out_label = f"[c{input_index}]"
         filters.append(
             f"{stream}[{input_index}:v]overlay=0:0:"
-            f"enable='between(t,{seg['start']:.2f},{seg['end']:.2f})'{out_label}"
+            f"enable='between(t,{start:.2f},{end:.2f})'{out_label}"
         )
         stream = out_label
+    filters.append(f"{stream}[{watermark_index}:v]overlay=0:0[vout]")
 
     cmd += ["-filter_complex", ";".join(filters),
-            "-map", stream, "-map", "1:a",
+            "-map", "[vout]", "-map", "1:a",
             "-c:v", "libx264", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", "-shortest", str(final_path.resolve())]
     subprocess.run(cmd, check=True, cwd=str(workdir))
@@ -404,6 +482,19 @@ def main():
 
         segments.append({"text": seg["text"], "start": cursor, "end": cursor + duration})
         cursor += duration
+
+    # Branded outro: spoken call-to-action over real footage (the follow CTA is
+    # overlaid on the video rather than shown as a separate end screen).
+    print("-> Adding branded outro...")
+    tagline_lc = BRAND_TAGLINE[:1].lower() + BRAND_TAGLINE[1:]
+    cta_text = f"Follow {BRAND_SPOKEN} for {tagline_lc}."
+    outro_idx = len(script["segments"])
+    wav_path, duration = synthesize_segment(cta_text, outro_idx, workdir)
+    audio_paths.append(wav_path)
+    clip_path = fetch_pexels_clip("cinematic aerial landscape", outro_idx, workdir)
+    video_paths.append(build_segment_video(clip_path, duration, outro_idx, workdir))
+    segments.append({"text": cta_text, "start": cursor, "end": cursor + duration, "is_outro": True})
+    cursor += duration
 
     print("-> Concatenating audio and video...")
     full_audio = concat_media(audio_paths, workdir / "full_audio.wav", is_audio=True)

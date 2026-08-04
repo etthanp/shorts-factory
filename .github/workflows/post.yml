@@ -48,6 +48,13 @@ jobs:
           AZURE_VOICE_NAME: en-US-OnyxTurboMultilingualNeural
           SPEECH_RATE: "+15%"      # how fast the voice talks: +0% normal, higher = faster
           MUSIC_VOLUME: "0.08"
+          # Branding — edit these to change how every video looks/sounds
+          BRAND_HANDLE: "@TheFoundationTheory"
+          BRAND_SPOKEN: "The Foundation Theory"
+          BRAND_TAGLINE: "Your daily dose of weird things you didn't know"
+          CAPTION_COLOR: "#FFDD00"          # caption text color (yellow)
+          CAPTION_WORDS_PER_CHUNK: "4"      # words on screen at once: lower = snappier
+          ACCENT_COLOR: "#3BA7FF"           # accent used on the follow CTA
         run: python pipeline.py
 
       - name: Save updated topic history back to the repo
